@@ -1,0 +1,48 @@
+name: MPW Precheck
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  precheck:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+
+      - name: Compile RTL
+        run: |
+          iverilog -g2012 -o tb_pathfinder \
+            rtl/s247_pathfinder_top.sv \
+            rtl/s247_compute_core.sv \
+            tb/tb_pathfinder.sv
+
+      - name: Run Testbench
+        run: |
+          vvp tb_pathfinder
+          echo "Testbench passed"
+
+      - name: Validate file structure
+        run: |
+          for f in \
+            rtl/s247_pathfinder_top.sv \
+            rtl/s247_compute_core.sv \
+            tb/tb_pathfinder.sv \
+            caravel/user_project_wrapper.v \
+            openlane/config.json; do
+            if [ -f "$f" ]; then
+              echo "  ✅ $f"
+            else
+              echo "  ❌ MISSING: $f"
+              exit 1
+            fi
+          done
