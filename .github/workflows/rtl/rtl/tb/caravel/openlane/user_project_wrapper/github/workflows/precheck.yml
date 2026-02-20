@@ -1,0 +1,92 @@
+name: S247-PATHFINDER-1 Precheck
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    name: RTL Verification & File Check
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Verify Repository Structure
+        run: |
+          echo "========================================="
+          echo "S247-PATHFINDER-1 Structure Verification"
+          echo "========================================="
+          
+          PASS=true
+          
+          for f in \
+            rtl/s247_pathfinder_top.sv \
+            rtl/s247_compute_core.sv \
+            tb/tb_pathfinder.sv \
+            caravel/user_project_wrapper.v \
+            openlane/user_project_wrapper/config.json; do
+            if [ -f "$f" ]; then
+              echo "✅ Found: $f"
+            else
+              echo "❌ Missing: $f"
+              PASS=false
+            fi
+          done
+          
+          if [ "$PASS" = false ]; then
+            echo ""
+            echo "❌ STRUCTURE CHECK FAILED"
+            exit 1
+          fi
+          
+          echo ""
+          echo "✅ ALL FILES PRESENT"
+
+      - name: Install Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+
+      - name: Compile RTL
+        run: |
+          echo "Compiling S247-PATHFINDER-1 RTL..."
+          iverilog -g2012 -o pathfinder_tb \
+            rtl/s247_compute_core.sv \
+            rtl/s247_pathfinder_top.sv \
+            tb/tb_pathfinder.sv
+          echo "✅ Compilation successful"
+
+      - name: Run Simulation
+        run: |
+          echo "Running testbench simulation..."
+          timeout 60 vvp pathfinder_tb | tee sim_output.log
+          echo ""
+          echo "✅ Simulation complete"
+
+      - name: Check Results
+        run: |
+          echo "========================================="
+          echo "S247-PATHFINDER-1 Results Summary"
+          echo "========================================="
+          
+          if grep -q "FAIL" sim_output.log; then
+            echo "❌ TEST FAILURES DETECTED"
+            grep "FAIL" sim_output.log
+            exit 1
+          fi
+          
+          echo "✅ ALL TESTS PASSED"
+          echo ""
+          echo "Ready for OpenLane synthesis"
+
+      - name: Upload Waveform
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-waveform
+          path: tb_pathfinder.vcd
+          retention-days: 30
